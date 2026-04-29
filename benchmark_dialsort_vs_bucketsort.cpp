@@ -1,6 +1,6 @@
 /**
  * ==================================================================================
- * BENCHMARK: DialSort-Counting vs Classic Counting Sort vs Std Sort
+ * BENCHMARK: DialSort-Counting vs Parallel Bucket Sort
  * ==================================================================================
  * Course  : Data Structures and Algorithms
  * Objetive: Experimentally compare both algorithms by varying
@@ -9,7 +9,7 @@
  *
  * HOW TO COMPILE IN CLION:
  *  - Add this file to your CMakeLists.txt
- *  - O desde terminal: g++ -O2 -std=c++17 -o benchmark benchmark_dialsort_vs_counting.cpp
+ *  - O desde terminal: g++ -O2 -std=c++17 -o benchmark benchmark_dialsort_vs_bucketsort.cpp
  *
  *HOW TO RUN IT:
  *  - Set the CMake profile to "Release", it is usually in Debug mode, however at the
@@ -29,6 +29,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <thread>
 #include <random>
 #include <chrono>
 #include <numeric>    // para std::accumulate
@@ -36,6 +37,7 @@
 #include <iomanip>    // para std::setw, std::fixed
 #include <string>
 #include <fstream>    // para exportar CSV
+
 using namespace std;
 
 // ============================================================
@@ -55,7 +57,7 @@ long long current_time_ns() {
     using namespace chrono;
     return chrono::duration_cast<chrono::nanoseconds>(
         chrono::high_resolution_clock::now().time_since_epoch()
-    ).count();
+    ).count(); // desde que se creo la funcion en nanosegundos
 }
 
 // ============================================================
@@ -93,45 +95,55 @@ void dialsort_counting(vector<int>& array) {
     }
 }
 
-void counting_sort_clasico(vector<int>& array) {
+void parallel_bucket_sort(vector<int>& array) {
     int n = array.size();
-    if (n <= 1) return;
+    if (n <= 1) return; // caso base, si hay 0 o 1 elemento ya esta ordenado
 
-    // Encontrar mínimo y máximo (igual que en Dial Sort)
-    int minimum = array[0];
+    // Encontrar mínimo y máximo
+    int minimum = array[0]; // se asume que el máximo y el mínimo es el primer elemento
     int maximum = array[0];
-    for (int i = 1; i < n; i++) {
-        if (array[i] < minimum) minimum = array[i];
+    for (int i = 1; i < n; i++) { //recorro todo el arreglo para encontrar el mínimo y el máximo
+        if (array[i] < minimum) minimum = array[i]; //comparo cada elemento con el siguiente y actualizo si hallo uno menor o mayor que el que ya se definió como min o max
         if (array[i] > maximum) maximum = array[i];
     }
 
-    int U = maximum - minimum + 1;
+    //Definir la cantidad de hilos
+    int K = thread::hardware_concurrency(); // pregunta al procesador cuántos hilos simultáneos soporta (subconjuntos que creará)
+    if (K == 0) K = 4; // Valor de seguridad
 
-    // Histograma (igual que en Dial Sort)
-    vector<int> H(U, 0);
-    for (int i = 0; i < n; i++) {
-        H[array[i] - minimum]++;
+    vector<vector<int>> buckets(K); // define la estructura de datos para tus subconjuntos: matriz bidimensional. Es un arreglo principal que contiene K arreglos vacíos por dentro
+
+    // Scatter
+    double range = (double)(maximum - minimum + 1) / K; //define el rango de cada subcnonjunto
+    for (int i = 0; i < n; i++) { // recorre todo el arreglo
+        int b_idx = (array[i] - minimum) / range;  //define el índice de en cual subconjunto va ese elemento
+        if (b_idx >= K) b_idx = K - 1; // Protección por redondeo, fuerza a colocar los números que se salen de rango en el último subconjunto
+        buckets[b_idx].push_back(array[i]); // coloca el número en la última posición de la cubeta seleccionada
     }
 
-    // PREFIX-SUM (el paso que DialSort elimina)
-    for (int i = 1; i < U; i++) {
-        H[i] = H[i] + H[i - 1];
+    // Ordenamiento Paralelo
+    vector<std::thread> hilos; //crea un vector de handlers, que permite llevar control de los procesos en cada hilo
+    for (int i = 0; i < K; i++) { //asigna cada hilo a un subconjunto porque es un ciclo que se repite k veces
+        hilos.push_back(thread([&buckets, i]() { //aca estoy creando un hilo y pasandole la función a ejectuar sobre el subconjunto (como parametros le paso el arreglo por referencia y la i [# de subconjunto])
+            // Cada hilo ordena su propio subconjunto de forma independiente
+            sort(buckets[i].begin(), buckets[i].end()); // sortea los subconjuntos hilo por hilo, dando el primer y el último elemento
+        }));
     }
 
-    // Arreglo auxiliar (memoria extra O(n))
-    vector<int> output(n);
-    for (int i = n - 1; i >= 0; i--) {
-        int index = array[i] - minimum;
-        H[index]--;
-        output[H[index]] = array[i];
+    // Control de los hilos
+    for (auto& t: hilos) {
+        t.join(); // revisa uno por uno los hilos y une el resultado al flujo del programa, para esto debe esperar a que todos terminen y los elimina una vez terminen su tarea
     }
 
-    // Copiar resultado al arreglo original
-    for (int i = 0; i < n; i++) {
-        array[i] = output[i];
+    // Gather
+    int pos = 0;
+    for (int i = 0; i < K; i++) { // acá los datos en los subconjuntos estan ordenados entonces solo se recorren en orden y se sobreescribe el arreglo original
+        for (int val : buckets[i]) { //por cada valor tipo entero en el subconjunto i
+            array[pos] = val; // asigna al array en la posicion 'pos' ese valor
+            pos++;
+        }
     }
 }
-
 
 // ============================================================
 // SECTION 4: DATA GENERATORS
@@ -186,12 +198,11 @@ vector<int> gen_almost_ordered(int n, int U, long long seed) {
 // ============================================================
 // SECTION 5: CORRECTNESS VERIFIER
 // ============================================================
-bool is_ordered(const vector<int>& array) {
+bool is_ordered(const vector<int>& array) { // evitar bugs y revisar que el arreglo sí este ordenado
     for (int i = 1; i < array.size(); i++)
         if (array[i-1] > array[i]) return false;
     return true;
 }
-
 
 // ============================================================
 // SECTION 6: RESULTS STRUCTURE
@@ -206,14 +217,13 @@ struct Results {
     double ms_desv;         // desviación estándar en ms
     double ms_min;          // tiempo mínimo (mejor caso real)
     double mkeys_s;         // throughput: millones de keys por segundo
-    long long bytes_mem;
-    string bigO_best;
-    string bigO_avg;
-    string bigO_worst;
-    bool correct;
+    long long bytes_mem;    // memoria en bytes
+    string bigO_best;       // mejor caso de big0
+    string bigO_avg;        // caso promedio de bigO
+    string bigO_worst;      // peor caso de bigO
+    bool correct;           // los valores pasan o no la prueba (son coherentes)
 
 };
-
 
 // ============================================================
 // SECTION 7: MEASURE FUNCTION
@@ -226,9 +236,7 @@ Results measure(
     int U,
     int which_algo
 ) {
-    // --- Calentamiento: ejecutar sin medir ---
-    // Esto "calienta" la caché del procesador, haciendo que las
-    // mediciones posteriores sean más representativas del uso real.
+    // Eejecutar sin medir
     long long bytes = 0;
     string bigO_best;
     string bigO_avg;
@@ -240,21 +248,20 @@ Results measure(
         bigO_avg   = "O(n+U)";
         bigO_worst = "O(n+U)";
     }
-    else if (which_algo==2) {
-        bytes= (long long)(U + base_data.size()*sizeof(int));
-        bigO_best  ="O(n+U)";
-        bigO_avg   = "O(n+U)";
-        bigO_worst = "O(n+U)";
+    else if (which_algo == 2) {
+        bytes = (long long)(base_data.size() * sizeof(int)); // Memoria buckets
+        bigO_best  = "O(n+k)";
+        bigO_avg   = "O(n+n^2/k+k)";
+        bigO_worst = "O(n^2)";
     }
 
     for (int r = 0; r < WARMUP_ROUNDS; r++) {
-        vector<int> copy = base_data;  // copia fresca cada vez
-        if (which_algo == 1) {
-            dialsort_counting(copy);
-        }else {counting_sort_clasico(copy);}
+        vector<int> copy = base_data;
+        if (which_algo == 1) dialsort_counting(copy);
+        else parallel_bucket_sort(copy);
     }
 
-    // --- Mediciones reales ---
+    // Mediciones reales
     vector<double> time_ms;
     bool correct = true;
 
@@ -263,7 +270,7 @@ Results measure(
 
         long long start = current_time_ns();
         if (which_algo == 1) dialsort_counting(copy);
-        else                counting_sort_clasico(copy);
+        else parallel_bucket_sort(copy);
         long long finish = current_time_ns();
 
         double ms = (finish - start) / 1000000.0;  // ns a ms
@@ -272,7 +279,7 @@ Results measure(
         if (!is_ordered(copy)) correct = false;
     }
 
-    // --- Calcular estadísticas ---
+    // Calcular estadísticas
     //Promedio
     double sum = accumulate(time_ms.begin(), time_ms.end(), 0.0);
     double media = sum / MEASURE_ROUNDS;
@@ -317,39 +324,39 @@ void print_header() {
     cout << "\n";
     cout << string(128, '=') << "\n";
     cout << left
-              << setw(16) << "Algorithm"
-              << setw(20) << "Distribution"
-              << setw(8) << "N"
-              << setw(6)  << "U"
-              << setw(12) << "Media(ms)"
+              << setw(20) << "Algorithm"
+              << setw(22) << "Distribution"
+              << setw(10) << "N"
+              << setw(8)  << "U"
+              << setw(14) << "Media(ms)"
               << setw(12) << "Desv(ms)"
-              << setw(12) << "Mín(ms)"
-              << setw(14) << "Mkeys/s"
+              << setw(10) << "Mín(ms)"
+              << setw(12) << "Mkeys/s"
               << "OK?\n";
     cout << string(128, '-') << "\n";
 }
 
 void print_rows(const Results& r) {
     cout << left << fixed << setprecision(3)
-              << setw(16) << r.algorithm
-              << setw(16) << r.distribution
+              << setw(20) << r.algorithm
+              << setw(18) << r.distribution
               << setw(12) << r.n
-              << setw(8)  << r.U
+              << setw(10)  << r.U
               << setw(12) << r.ms_media
               << setw(11) << r.ms_desv
               << setw(11) << r.ms_min
-              << setw(12) << r.mkeys_s
+              << setw(11) << r.mkeys_s
               << (r.correct ? "PASSED" : "*** FAILED ***") << "\n";
 }
 
-void print_comparisons(const Results& dial, const Results& cs) {
-    double speedup = (cs.ms_media > 0) ? cs.ms_media / dial.ms_media : 0.0;
-    cout << "  --> Speedup DialSort vs Counting Sort: "
+void print_comparisons(const Results& dial, const Results& pb) {
+    double speedup = (pb.ms_media > 0) ? pb.ms_media / dial.ms_media : 0.0;
+    cout << "  --> Speedup DialSort vs Parallel Bucket Sort: "
               << fixed << setprecision(2) << speedup << "x";
     if (speedup > 1.0)
         cout << "  (DialSort is FASTER)\n";
     else if (speedup < 1.0)
-        cout << "  (Counting Sort is FASTER)\n";
+        cout << "  (Parallel Bucket Sort is FASTER)\n";
     else
         cout << "  (They are pretty identical)\n";
     cout << "\n";
@@ -359,7 +366,6 @@ void print_comparisons(const Results& dial, const Results& cs) {
 // ============================================================
 // SECTION 9: EXPORT TO CSV
 // ============================================================
-// Útil para graficar los resultados en Excel o Python
 
 void export_csv(const vector<Results>& resultsBench, const string& file_name) {
     ofstream file(file_name);
@@ -371,19 +377,17 @@ void export_csv(const vector<Results>& resultsBench, const string& file_name) {
     // Encabezado
     file << "Algorithm,distribution,n,U,ms_media,ms_desv,ms_min,Mkeys_s,correct,speedup\n";
 
-    // Recorre de a pares: [0]=DialSort, [1]=CountingSort, [2]=DialSort, [3]=CountingSort...
+    // Recorre de a pares: [0]=DialSort, [1]=Parallel Bucket Sort, [2]=DialSort, [3]=Parallel Bucket Sort...
     for (int i = 0; i + 1 < (int)resultsBench.size(); i += 2) {
         const Results& dial = resultsBench[i];      // fila DialSort
-        const Results& cs   = resultsBench[i + 1];  // fila CountingSort
+        const Results& pb   = resultsBench[i + 1];  // fila Parallel Bucket Sort
 
-        // Calcular speedup: cuántas veces más rápido es DialSort
-        // Si dial.ms_media es 0 (no debería pasar) ponemos 0 para evitar división por cero
+        // Calculo de speedup: cuántas veces más rápido es DialSort
         double speedup = 0.0;
         if (dial.ms_media > 0.0) {
-            speedup = cs.ms_media / dial.ms_media;
+            speedup = pb.ms_media / dial.ms_media;
         }
 
-        // Escribir fila de DialSort CON su speedup
         file << fixed << setprecision(4)
              << dial.algorithm    << ","
              << dial.distribution << ","
@@ -396,24 +400,23 @@ void export_csv(const vector<Results>& resultsBench, const string& file_name) {
              << (dial.correct ? "PASSED" : "FAILED") << ","
              << speedup           << "\n";  // speedup de DialSort (el que gana >1.0)
 
-        // Escribir fila de CountingSort con speedup inverso
-        // Si speedup de DialSort es 2.0, el de CountingSort es 0.5
-        double speedup_cs = 0.0;
+        // Si speedup de DialSort es 2.0, el de Parallel Bucket sort es 0.5
+        double speedup_pb = 0.0;
         if (speedup > 0.0) {
-            speedup_cs = 1.0 / speedup;
+            speedup_pb = 1.0 / speedup;
         }
 
         file << fixed << setprecision(4)
-             << cs.algorithm    << ","
-             << cs.distribution << ","
-             << cs.n            << ","
-             << cs.U            << ","
-             << cs.ms_media     << ","
-             << cs.ms_desv      << ","
-             << cs.ms_min       << ","
-             << cs.mkeys_s      << ","
-             << (cs.correct ? "PASSED" : "FAILED") << ","
-             << speedup_cs      << "\n";  // speedup de CountingSort (siempre <= 1.0)
+             << pb.algorithm    << ","
+             << pb.distribution << ","
+             << pb.n            << ","
+             << pb.U            << ","
+             << pb.ms_media     << ","
+             << pb.ms_desv      << ","
+             << pb.ms_min       << ","
+             << pb.mkeys_s      << ","
+             << (pb.correct ? "PASSED" : "FAILED") << ","
+             << speedup_pb      << "\n";  // speedup de CountingSort (siempre <= 1.0)
     }
 
     file.close();
@@ -428,20 +431,17 @@ void export_csv(const vector<Results>& resultsBench, const string& file_name) {
 int main() {
 
     cout << "================================================================\n";
-    cout << " BENCHMARK: DialSort-Counting  vs  Classic Counting Sort\n";
+    cout << " BENCHMARK: DialSort-Counting  vs Parallel Bucket Sort\n";
     cout << " Warmup rounds           : " << WARMUP_ROUNDS << "\n";
     cout << " Measurement rounds      : " << MEASURE_ROUNDS << "\n";
     cout << " Random seed             : " << SEED << "\n";
     cout << "================================================================\n";
 
-    // --- Dimensiones del experimento ---
-    // n: tamaños de entrada (de 100k a 10M como pide la práctica)
+    // Dimensiones
+    // n: tamaños de entrada
     vector<int> sizes = {100000, 500000, 1000000, 5000000, 10000000};
 
-    // U: tamaños del universo (rango de valores posibles)
-    // Pequeño: muchas repeticiones (ventaja para ambos)
-    // Mediano: caso típico
-    // Grande: pocos duplicados, el barrido del histograma domina
+    // U: tamaños del universo
     const vector<int> Us = {256, 1024, 65536};
 
     // Distribuciones a probar
@@ -450,7 +450,7 @@ int main() {
     // Recolector de todos los resultados para el CSV
     vector<Results> all_results;
 
-    // --- Bucle principal ---
+    // Bucle principal
     for (int in = 0; in < 5; in++) {
         int n = sizes[in];
 
@@ -474,10 +474,10 @@ int main() {
                 else                                     data = gen_almost_ordered(n, U, seed);
 
                 // Medir DialSort
-                Results r_dial = measure("DialSort", name_dist, data, U, 1);
+                Results r_dial = measure("DialSort              ", name_dist, data, U, 1);
 
-                // Medir Counting Sort clasico
-                Results r_cs   = measure("CountingSort", name_dist, data, U, 2);
+                // Medir Parallel Bucket sort
+                Results r_cs   = measure("Parallel Bucket Sort  ", name_dist, data, U, 2);
 
                 print_rows(r_dial);
                 print_rows(r_cs);
@@ -489,7 +489,7 @@ int main() {
         }
     }
 
-    // --- Resumen global ---
+    // Resumen global
     cout << "\n" << string(108, '=') << "\n";
     cout << " GLOBAL SUMMARY\n";
     cout << string(108, '-') << "\n";
@@ -528,7 +528,7 @@ int main() {
     cout << fixed << setprecision(2);
     cout << " Total of configurations   : " << total << "\n";
     cout << " DialSort wins in          : " << count_dial_wins << " out of " << total << " cases\n";
-    cout << " Counting Sort wins in     : " << count_cs_wins   << " out of " << total << " cases\n";
+    cout << " Parallel Bucket Sort wins in     : " << count_cs_wins   << " out of " << total << " cases\n";
     cout << " Average  Speedup          : " << speedup_prom    << "x\n";
     cout << " Better speedup of DialSort : " << better_speedup   << "x  (" << better_config << ")\n";
     cout << string(108, '=') << "\n";

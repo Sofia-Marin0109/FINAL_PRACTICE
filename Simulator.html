@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DialSort vs Parallel Bucket Sort — Simulator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', monospace; background: #0d0d14; color: #ccc; padding: 18px; min-height: 100vh; }
+    h1 { text-align: center; font-size: 18px; font-weight: 500; color: #fff; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 4px; }
+    .subtitle { text-align: center; font-size: 11px; color: #444; letter-spacing: 1px; margin-bottom: 16px; }
+
+    /* Controles y Paneles */
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: center; background: #12121a; border: 1px solid #1e1e2e; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+    .controls label { font-size: 11px; color: #555; letter-spacing: 1px; }
+    .controls input[type="text"] { background: #0d0d14; border: 1px solid #2a2a3a; color: #fff; font-family: 'Courier New', monospace; font-size: 13px; padding: 6px 10px; border-radius: 4px; width: 220px; outline: none; }
+    .controls input[type="range"] { width: 80px; accent-color: #4a8aff; }
+    button { font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 1px; padding: 6px 14px; border-radius: 4px; border: 1px solid #2a2a3a; cursor: pointer; transition: all 0.15s; text-transform: uppercase; background: #12121a; color: #888; }
+    button:hover { border-color: #555; color: #fff; }
+    .btn-load  { color: #4a8aff; border-color: #1a2a5a; }
+    .btn-drop  { color: #44cc66; border-color: #1a3a1a; }
+    .btn-sweep { color: #ffaa22; border-color: #3a2a00; }
+    .btn-step  { color: #cc88ff; border-color: #2a1a3a; }
+    .btn-reset { color: #ff5555; border-color: #2a1a1a; }
+    .btn-ex    { color: #aaaaff; border-color: #1a1a3a; }
+
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
+    @media(max-width:780px){ .panels{ grid-template-columns:1fr; } }
+    .panel { background: #12121a; border: 1px solid #1e1e2e; border-radius: 8px; padding: 14px; }
+    .panel-title { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; padding-bottom: 8px; border-bottom: 1px solid #1e1e2e; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+    .panel-left  .panel-title { color: #44cc66; }
+    .panel-right .panel-title { color: #4a8aff; }
+    .badge { font-size: 9px; padding: 2px 7px; border-radius: 3px; letter-spacing: 1px; }
+    .badge-red  { background:#1a0a0a; border:1px solid #662222; color:#ff5555; }
+    .badge-blue { background:#0a1a2a; border:1px solid #224466; color:#4a8aff; }
+    .phase-lbl { font-size: 11px; color: #555; min-height: 15px; margin-bottom: 10px; letter-spacing: 0.5px; transition: color 0.3s; }
+    .phase-lbl.on { color: #ddd; }
+
+    /* ── ESTILOS DIALSORT (IZQUIERDA) ── */
+    .tubes-wrap { position: relative; height: 260px; margin-bottom: 8px; border: 1px solid #1a1a2a; border-radius: 6px; background: #0a0a10; overflow: hidden; }
+    .grid-line { position: absolute; left: 36px; right: 4px; height: 1px; background: #1a1a2a; }
+    .grid-label { position: absolute; left: 2px; font-size: 9px; color: #333; transform: translateY(-50%); width: 30px; text-align: right; }
+    .y-axis { position: absolute; left: 36px; top: 0; bottom: 0; width: 1px; background: #222; }
+    .tubes-row { position: absolute; left: 40px; right: 6px; top: 6px; bottom: 18px; display: flex; gap: 4px; align-items: stretch; }
+    .tube { flex: 1; position: relative; background: #0f0f18; border: 1px solid #1e1e30; border-radius: 6px; overflow: visible; }
+    .marker { position: absolute; left: 50%; transform: translateX(-50%); width: 80%; min-width: 18px; max-width: 48px; aspect-ratio: 1; border-radius: 8px; background: linear-gradient(145deg, #ffcc44, #cc8800); border: 2px solid #ffdd66; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; color: #1a0a00; box-shadow: 0 0 10px #cc880066; opacity: 0; transition: top 0.45s cubic-bezier(.4,0,.2,1), opacity 0.3s, background 0.3s, box-shadow 0.3s; z-index: 4; }
+    .marker.visible { opacity: 1; }
+    .marker.highlighted { background: linear-gradient(145deg, #88ffaa, #22aa44); border-color: #aaffcc; box-shadow: 0 0 14px #44ff8888; color: #001a08; }
+    .marker.emitted { background: linear-gradient(145deg, #334433, #223322); border-color: #445544; box-shadow: none; color: #556655; }
+    .tube-lbl { position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #333; white-space: nowrap; }
+    .beam { position: absolute; left: 40px; right: 6px; height: 2px; background: #ffaa22; box-shadow: 0 0 8px #ffaa2266; opacity: 0; transition: top 0.15s linear, opacity 0.2s; z-index: 10; pointer-events: none; }
+    .beam.on { opacity: 1; }
+
+    /* ── NUEVOS ESTILOS BUCKET SORT (DERECHA) ── */
+    .bs-bins-wrap { display: flex; gap: 10px; height: 260px; margin-bottom: 8px; }
+    .bs-bin { flex: 1; background: #050a12; border: 1px solid #1a2a4a; border-radius: 6px 6px 0 0; border-bottom: 4px solid #4a8aff; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+    .bs-bin-title { background: #1a2a4a; color: #88aaff; font-size: 10px; text-align: center; padding: 4px 0; font-weight: bold; letter-spacing: 1px; }
+    .bs-bin-content { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 6px; gap: 4px; }
+    .bs-item { width: 100%; max-width: 40px; aspect-ratio: 1; background: linear-gradient(145deg, #224466, #112233); border: 2px solid #4a8aff; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: #fff; opacity: 0; transform: translateY(-20px); transition: all 0.3s cubic-bezier(.4,0,.2,1); }
+    .bs-item.visible { opacity: 1; transform: translateY(0); }
+    .bs-item.sorted { background: linear-gradient(145deg, #228844, #115522); border-color: #44cc66; }
+    .bs-item.emitted { background: #111; border-color: #333; color: #555; }
+
+    /* Comunes */
+    .out-row { font-size: 11px; color: #444; min-height: 16px; word-break: break-all; margin: 4px 0; }
+    .out-row span { color: #44cc66; }
+    .out-row.bs span { color: #4a8aff; }
+    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; margin-top: 6px; }
+    .mcard { background: #0d0d14; border: 1px solid #1a1a22; border-radius: 4px; padding: 5px 7px; text-align: center; }
+    .mcard-lbl { font-size: 8px; color: #444; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 2px; }
+    .mcard-val { font-size: 14px; font-weight: 500; color: #eee; }
+    .mcard-sub { font-size: 8px; color: #333; margin-top: 1px; }
+    .logbox { background: #0a0a10; border: 1px solid #1a1a22; border-radius: 4px; padding: 8px; height: 56px; overflow-y: auto; margin-top: 6px; font-size: 10px; line-height: 1.7; color: #444; }
+    .logbox .ll { color: #777; }
+    .logbox .llhi { color: #eee; }
+    #spd-lbl { font-size: 11px; color: #666; min-width: 28px; }
+  </style>
+</head>
+<body>
+
+<h1>DialSort vs Parallel Bucket Sort</h1>
+<p class="subtitle">Comparison between height-based sovereign values and distributed range buckets</p>
+
+<div class="controls">
+  <label>INPUT</label>
+  <input type="text" id="inp" value="9,3,12,1,7,4,14,2">
+  <button class="btn-ex"    onclick="loadEx()">Example</button>
+  <button class="btn-load"  onclick="loadInput()">&#9654; Load</button>
+  <button class="btn-drop"  onclick="runDrop()">&#8595; Drop all</button>
+  <button class="btn-sweep" onclick="runSweep()">&#8593; Sweep / Sort</button>
+  <button class="btn-step"  onclick="stepOnce()">&#9654;| Step</button>
+  <button class="btn-reset" onclick="resetAll()">&#10005; Reset</button>
+  <label>SPEED</label>
+  <input type="range" id="spd" min="50" max="850" value="400" step="50" oninput="setSpeed(this.value)">
+  <span id="spd-lbl">mid</span>
+</div>
+
+<div class="panels">
+  <!-- LEFT: DialSort -->
+  <div class="panel panel-left">
+    <div class="panel-title">
+      DialSort — Counting
+      <span class="badge badge-red">prefix-sum eliminated</span>
+    </div>
+    <div class="phase-lbl" id="ds-ph">load numbers to begin...</div>
+    <div class="tubes-wrap" id="ds-wrap">
+      <div class="beam" id="ds-beam"></div>
+    </div>
+    <div class="out-row" id="ds-out">output: —</div>
+    <div class="metrics">
+      <div class="mcard"><div class="mcard-lbl">phase</div><div class="mcard-val" id="ds-mp">—</div></div>
+      <div class="mcard"><div class="mcard-lbl">operations</div><div class="mcard-val" id="ds-mo">0</div><div class="mcard-sub">O(n+U)</div></div>
+      <div class="mcard"><div class="mcard-lbl">comparisons</div><div class="mcard-val" id="ds-mc">0</div><div class="mcard-sub">always 0</div></div>
+      <div class="mcard"><div class="mcard-lbl">extra mem</div><div class="mcard-val" style="font-size:11px" id="ds-mm">O(U)</div><div class="mcard-sub">histogram</div></div>
+    </div>
+    <div class="logbox" id="ds-log"></div>
+  </div>
+
+  <!-- RIGHT: Parallel Bucket Sort -->
+  <div class="panel panel-right">
+    <div class="panel-title">
+      Parallel Bucket Sort
+      <span class="badge badge-blue">K = 3 Buckets (Threads)</span>
+    </div>
+    <div class="phase-lbl" id="bs-ph">load numbers to begin...</div>
+
+    <!-- NUEVO CONTENEDOR VISUAL DE CUBETAS -->
+    <div class="bs-bins-wrap" id="bs-bins-container">
+      <!-- Se llena por JavaScript -->
+    </div>
+
+    <div class="out-row bs" id="bs-out">output: —</div>
+    <div class="metrics">
+      <div class="mcard"><div class="mcard-lbl">phase</div><div class="mcard-val" id="bs-mp">—</div></div>
+      <div class="mcard"><div class="mcard-lbl">operations</div><div class="mcard-val" id="bs-mo">0</div><div class="mcard-sub">O(n + n²/k + k)</div></div>
+      <div class="mcard"><div class="mcard-lbl">comparisons</div><div class="mcard-val" id="bs-mc">0</div><div class="mcard-sub">inside buckets</div></div>
+      <div class="mcard"><div class="mcard-lbl">extra mem</div><div class="mcard-val" style="font-size:11px" id="bs-mm">O(n)</div><div class="mcard-sub">buckets list</div></div>
+    </div>
+    <div class="logbox" id="bs-log"></div>
+  </div>
+</div>
+
+<script>
+  // ─────────────────────────────────────────────
+  // STATE & CONFIG
+  // ─────────────────────────────────────────────
+  var S = { input:[], minV:0, maxV:0, U:0, loaded:false, animating:false, queue:[], qi:0, speed:350 };
+  var dsH=[], bsBuckets=[];
+  var dsOps=0, bsOps=0, bsComps=0;
+  var dsOut=[], bsOut=[];
+  var TUBE_H = 220;
+  var K_BUCKETS = 3;
+  var dsDropped = [];
+
+  function setSpeed(v){
+    S.speed = 900 - parseInt(v);
+    var lbls=['slowest','slow','mid','fast','fastest'];
+    document.getElementById('spd-lbl').textContent = lbls[Math.min(Math.floor((parseInt(v)-50)/200), 4)] || 'mid';
+  }
+
+  function log(side, msg, hi){
+    var b = document.getElementById(side+'-log');
+    var d = document.createElement('div');
+    d.className = hi ? 'll llhi' : 'll'; d.textContent = msg;
+    b.appendChild(d); b.scrollTop = b.scrollHeight;
+  }
+  function clearLog(side){ document.getElementById(side+'-log').innerHTML=''; }
+  function setPhase(side, txt, on){
+    var e = document.getElementById(side+'-ph');
+    e.textContent = txt; e.className = 'phase-lbl'+(on?' on':'');
+  }
+  function setM(side, key, val){ var e = document.getElementById(side+'-m'+key); if(e) e.textContent = val; }
+
+  // ── LÓGICA VISUAL DIALSORT ──
+  function valToTop(val, minV, maxV, areaH, markerH){
+    var frac = (maxV === minV) ? 0.5 : (val - minV)/(maxV - minV);
+    var pad = markerH/2 + 4; return (1 - frac) * (areaH - 2*pad) + pad;
+  }
+
+  function buildTubes(){
+    var wrap = document.getElementById('ds-wrap');
+    var n = S.input.length, minV = S.minV, maxV = S.maxV, areaH = TUBE_H;
+    wrap.querySelectorAll('.tube,.grid-line,.grid-label,.y-axis,.tubes-row').forEach(e=>e.remove());
+
+    var yax = document.createElement('div'); yax.className = 'y-axis'; wrap.appendChild(yax);
+    for(var v=minV; v<=maxV; v++){
+      var top = valToTop(v, minV, maxV, areaH, 22);
+      var gl = document.createElement('div'); gl.className = 'grid-line'; gl.style.top = (top + 11) + 'px'; wrap.appendChild(gl);
+      var lbl = document.createElement('div'); lbl.className = 'grid-label'; lbl.style.top = (top + 11) + 'px'; lbl.textContent = v; wrap.appendChild(lbl);
+    }
+
+    var row = document.createElement('div'); row.className = 'tubes-row'; row.id = 'ds-row';
+    for(var i=0; i<n; i++){
+      var tube = document.createElement('div'); tube.className = 'tube'; tube.id = 'ds-tube-'+i;
+      var mk = document.createElement('div'); mk.className = 'marker'; mk.id = 'ds-marker-'+i;
+      mk.textContent = S.input[i]; mk.style.top = '0px'; tube.appendChild(mk);
+      var lbl2 = document.createElement('div'); lbl2.className = 'tube-lbl'; lbl2.textContent = 't'+(i+1); tube.appendChild(lbl2);
+      row.appendChild(tube);
+    }
+    wrap.appendChild(row);
+  }
+
+  // ── NUEVA LÓGICA VISUAL BUCKET SORT ──
+  function buildBins(){
+    var container = document.getElementById('bs-bins-container');
+    container.innerHTML = '';
+    var mn = S.minV, mx = S.maxV;
+    var range = (mx - mn + 1) / K_BUCKETS;
+
+    for(var b=0; b<K_BUCKETS; b++){
+      var minR = Math.floor(mn + (b * range));
+      var maxR = Math.floor(mn + ((b+1) * range) - 1);
+      if(b === K_BUCKETS -1) maxR = mx;
+
+      var bin = document.createElement('div');
+      bin.className = 'bs-bin';
+      bin.innerHTML = `<div class="bs-bin-title">Thread ${b}<br>[${minR}-${maxR}]</div><div class="bs-bin-content" id="bs-bin-content-${b}"></div>`;
+      container.appendChild(bin);
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // COLA DE ANIMACIÓN
+  // ─────────────────────────────────────────────
+  function buildQueue(){
+    S.queue = []; S.qi = 0;
+    var inp = S.input, U = S.U, mn = S.minV, mx = S.maxV;
+
+    dsH = new Array(U).fill(0);
+    var tempH = new Array(U).fill(0);
+    for(var i=0; i<inp.length; i++) tempH[inp[i] - mn]++;
+
+    bsBuckets = Array.from({length: K_BUCKETS}, () => []);
+    dsOps=0; bsOps=0; bsComps=0; dsOut=[]; bsOut=[]; dsDropped = [];
+
+    var range = (mx - mn + 1) / K_BUCKETS;
+
+    push({t:'lbl', ds:'Phase 1 — drop: each key falls to its own height', bs:'Phase 1 — Scatter: Route values to threads'});
+
+    // Drop Phase
+    for(var i=0; i<inp.length; i++){
+      var k = inp[i];
+      var bId = Math.floor((k - mn) / range);
+      if(bId >= K_BUCKETS) bId = K_BUCKETS - 1;
+      push({t:'drop', i:i, k:k, idx: k-mn, bId: bId});
+    }
+
+    push({t:'snap'});
+
+    // Sort Phase
+    push({t:'lbl', ds:'Phase 2 — sweep: beam reads histogram left → right', bs:'Phase 2 — Parallel Sort: Threads sort internally'});
+    push({t:'sort-buckets'});
+
+    // Gather Phase
+    push({t:'lbl', ds:'Sweeping histogram and rebuilding array', bs:'Phase 3 — Gather: Concatenate ordered buckets'});
+
+    for(var y=0; y<U; y++){
+      push({t:'beam-ds', y:y, val:y+mn});
+      for(var e=0; e<tempH[y]; e++) push({t:'emit-ds', val:y+mn});
+    }
+
+    for(var b=0; b<K_BUCKETS; b++){
+      push({t:'gather-bs', bId: b});
+    }
+
+    push({t:'done'});
+  }
+
+  function push(o){ S.queue.push(o); }
+
+  function exec(step){
+    var inp=S.input;
+
+    if(step.t==='lbl'){ setPhase('ds', step.ds, true); setPhase('bs', step.bs, true); return; }
+
+    if(step.t==='drop'){
+      // DialSort Drop
+      dsH[step.idx]++; dsOps++;
+      var dsMk = document.getElementById('ds-marker-'+step.i);
+      if(dsMk){ dsMk.style.top = valToTop(step.k, S.minV, S.maxV, TUBE_H, 22) + 'px'; dsMk.className = 'marker visible'; }
+      dsDropped[step.i] = step.k;
+      setM('ds','o', dsOps);
+      log('ds','drop key='+step.k+' → H['+step.idx+']');
+
+      // Bucket Sort Drop
+      bsBuckets[step.bId].push(step.k); bsOps++;
+      var bContent = document.getElementById('bs-bin-content-'+step.bId);
+      var item = document.createElement('div');
+      item.className = 'bs-item visible';
+      item.textContent = step.k;
+      item.id = `bs-item-val-${step.k}-${bsBuckets[step.bId].length}`; // ID unico
+      bContent.appendChild(item);
+      setM('bs','o', bsOps);
+      log('bs',`Scatter key=${step.k} → Thread ${step.bId}`);
+      return;
+    }
+
+    if(step.t==='snap'){
+      log('ds','H = ['+dsH.join(', ')+']', true);
+      log('bs','Buckets filled, preparing to sort...', true);
+      return;
+    }
+
+    if(step.t==='sort-buckets'){
+      for(var b=0; b<K_BUCKETS; b++){
+        if(bsBuckets[b].length === 0) continue;
+        bsBuckets[b].sort((a,b) => { bsComps++; return a-b; });
+        bsOps += bsBuckets[b].length;
+
+        var bContent = document.getElementById('bs-bin-content-'+b);
+        bContent.innerHTML = ''; // Limpiar div visual
+
+        // Re-agregar elementos ordenados visualmente
+        bsBuckets[b].forEach((val, index) => {
+          var item = document.createElement('div');
+          item.className = 'bs-item visible sorted';
+          item.textContent = val;
+          item.id = `bs-item-sorted-${b}-${index}`;
+          bContent.appendChild(item);
+        });
+        log('bs', `Thread ${b} sorted its bucket simultaneously.`);
+      }
+      setM('bs','c', bsComps); setM('bs','o', bsOps);
+      return;
+    }
+
+    if(step.t==='beam-ds'){
+      var beam = document.getElementById('ds-beam');
+      beam.style.top = (valToTop(step.val, S.minV, S.maxV, TUBE_H, 22) + 11) + 'px'; beam.className = 'beam on';
+      dsOps++; setM('ds','o',dsOps);
+      for(var mi=0;mi<inp.length;mi++){
+        if(dsDropped[mi]===step.val) { document.getElementById('ds-marker-'+mi).className = 'marker visible highlighted'; }
+      }
+      return;
+    }
+
+    if(step.t==='emit-ds'){
+      dsOut.push(step.val); dsOps++; setM('ds','o',dsOps);
+      document.getElementById('ds-out').innerHTML='output: <span>'+dsOut.join(', ')+'</span>';
+      for(var ei=0;ei<inp.length;ei++){
+        if(dsDropped[ei]===step.val && document.getElementById('ds-marker-'+ei).className.indexOf('highlighted')!==-1){
+          document.getElementById('ds-marker-'+ei).className = 'marker visible emitted'; break;
+        }
+      }
+      return;
+    }
+
+    if(step.t==='gather-bs'){
+      if(bsBuckets[step.bId].length > 0){
+        bsBuckets[step.bId].forEach((val, index) => {
+          bsOut.push(val);
+          bsOps++;
+          // Apagar la cajita visual
+          var item = document.getElementById(`bs-item-sorted-${step.bId}-${index}`);
+          if(item) item.className = 'bs-item visible emitted';
+        });
+        setM('bs','o', bsOps);
+        document.getElementById('bs-out').innerHTML='output: <span>'+bsOut.join(', ')+'</span>';
+        log('bs', `Gathered data from Thread ${step.bId}`);
+      }
+      return;
+    }
+
+    if(step.t==='done'){
+      setPhase('ds','Done — O(n+U), 0 comparisons', true);
+      setPhase('bs','Done — Parallel gather complete', true);
+      document.getElementById('ds-beam').className='beam';
+      log('ds','SORTED: ['+dsOut.join(', ')+']', true);
+      log('bs','SORTED: ['+bsOut.join(', ')+']', true);
+      S.animating=false;
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // CONTROLES DE EJECUCIÓN
+  // ─────────────────────────────────────────────
+  function loadEx(){ document.getElementById('inp').value='9,3,12,1,7,4,14,2'; loadInput(); }
+  function loadInput(){
+    var raw=document.getElementById('inp').value;
+    var parts=raw.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
+    if(!parts.length){alert('Enter numbers separated by commas.'); return;}
+    if(parts.length>16) parts=parts.slice(0,16);
+
+    var mn=parts[0], mx=parts[0];
+    for(var i=1;i<parts.length;i++){ if(parts[i]<mn) mn=parts[i]; if(parts[i]>mx) mx=parts[i]; }
+
+    S.input=parts; S.minV=mn; S.maxV=mx; S.U=mx-mn+1;
+    S.loaded=true; S.animating=false; S.queue=[]; S.qi=0;
+
+    buildTubes(); buildBins(); // Llama a construir los tubos y los Bins
+    clearLog('ds'); clearLog('bs');
+    setPhase('ds','Phase 1 ready — press Drop all or Step',false);
+    setPhase('bs','Phase 1 ready — press Drop all or Step',false);
+    document.getElementById('ds-out').innerHTML='output: —';
+    document.getElementById('bs-out').innerHTML='output: —';
+    ['ds','bs'].forEach(s=>{ setM(s,'o','0'); setM(s,'c','0'); setM(s,'p','—'); });
+
+    buildQueue();
+  }
+  function stepOnce(){ if(!S.loaded||S.animating)return; if(S.qi>=S.queue.length)return; exec(S.queue[S.qi++]); }
+  function runDrop(){ if(!S.loaded||S.animating)return; runUntil('snap'); }
+  function runSweep(){ if(!S.loaded||S.animating)return; runRemaining(); }
+  function runUntil(stopT){
+    if(S.qi>=S.queue.length){S.animating=false; return;}
+    var step=S.queue[S.qi++]; exec(step);
+    if(step.t===stopT||step.t==='done'){S.animating=false; return;}
+    S.animating=true; setTimeout(()=>runUntil(stopT), S.speed);
+  }
+  function runRemaining(){
+    if(S.qi>=S.queue.length){S.animating=false; return;}
+    var step=S.queue[S.qi++]; exec(step);
+    if(step.t==='done'){S.animating=false; return;}
+    S.animating=true; setTimeout(runRemaining, S.speed);
+  }
+  function resetAll(){
+    S.loaded=false; S.animating=false; S.queue=[]; S.qi=0;
+    document.getElementById('ds-wrap').querySelectorAll('.tube,.grid-line,.grid-label,.y-axis,.tubes-row').forEach(e=>e.remove());
+    document.getElementById('bs-bins-container').innerHTML = '';
+    document.getElementById('ds-beam').className='beam';
+    ['ds','bs'].forEach(s=>{
+      clearLog(s); setPhase(s,'load numbers to begin...',false);
+      document.getElementById(s+'-out').innerHTML='output: —';
+      setM(s,'o','0'); setM(s,'p','—'); setM(s,'c','0');
+    });
+  }
+</script>
+</body>
+</html>
