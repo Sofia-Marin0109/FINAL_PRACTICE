@@ -74,6 +74,10 @@ g++ -O2 -std=c++17 -pthread -o benchmark_dialsort_vs_bucketsort.cpp
 **Interactive Simulator**
 
 Open `simulator.html` in any browser (Chrome recommended). The simulator shows both algorithms side by side in real time:
+**Interactive Simulator**
+
+Or you can run the simulator directly in your browser without downloading anything:
+**[CLICK HERE TO OPEN THE SIMULATOR](https://Sofia-Marin0109.github.io/FINAL_PRACTICE/Simulator.html)**
 
 * DialSort (Left): Each number falls to the height that matches its value, and a light beam sweeps left to right reading the histogram.
 * Parallel Bucket Sort (Right): Elements are routed into discrete buckets based on their range. Each bucket is then sorted independently and simultaneously, simulating parallel threads, before being gathered into the final array.
