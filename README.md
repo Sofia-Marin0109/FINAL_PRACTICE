@@ -1,4 +1,4 @@
-# DialSort vs Counting Sort — Experimental Benchmark
+# DialSort vs Parallel Bucket Sort — Experimental Benchmark
 Course: ST0245 - Data Structures and Algorithms
 University: EAFIT University — School of Applied Sciences and Engineering
 Lecturer: Alexander Narváez Berrío
@@ -12,9 +12,8 @@ Sofía Marín Bustamante
 This practice implements and experimentally compares two non-comparative integer sorting algorithms:
 
 * DialSort-Counting — sorts integers by mapping each value directly to its position in a histogram, then sweeping the histogram left to right. No comparisons, no prefix-sum.
-* Classic Counting Sort — similar histogram approach, but requires an extra prefix-sum pass to calculate exact output positions before distributing elements.
+* Parallel Bucket Sort — divides the data into K subsets (buckets) based on value ranges, sorts each bucket independently using a separate CPU thread, then reassembles the results in order.
 
-Both run in O(n + U) time, but DialSort eliminates the prefix-sum step, resulting in consistently faster real-world performance.
 
 This benchmark implements up to 45 configurations to ensure a comprehensive and highly accurate analysis, given the volume and diversity of the data. The configurations are defined based on all possible combinations: the two algorithms, the size n of the input array, the size U of the universe, and the three types of distributions used. In addition, each measurement does not only consist of one run of the two algorithms with the parameters defined for that measurement, but each includes 3 warm-up rounds to ensure that the 5 measurement rounds yield more accurate data without interference from the cache, the operating system, or other factors that typically cause measurements to fluctuate.
 
@@ -98,3 +97,4 @@ After executing 225 configurations across different input sizes ($n$), universe 
 1. **The Overhead of Concurrency:** While Parallel Bucket Sort theoretically benefits from multi-threading, the overhead of dynamic memory allocation (`std::vector::push_back` for buckets) and thread synchronization (`std::thread::join`) proved to be costlier than DialSort's straightforward contiguous array accesses.
 2. **Algorithmic Nature:** DialSort avoids key comparisons entirely, operating in strict $\mathcal{O}(n + U)$ time. Parallel Bucket Sort relies on `std::sort` (Introsort) inside each bucket, binding its internal performance to an $\mathcal{O}(n \log n)$ bound.
 3. **The Universe ($U$) Bottleneck:** Parallel Bucket Sort's relative performance improved noticeably as $U$ increased. Its best relative showing (reducing DialSort's speedup down to just **2.43x**) occurred at $n = 100,000$ and $U = 65,536$. This trend confirms the theoretical vulnerability of DialSort: if $U$ were exponentially larger than $n$ (e.g., $U = 10^9$), DialSort would suffer from massive memory allocation and inefficient sweeps, which is exactly the scenario where a distributed Parallel Bucket Sort would theoretically dominate.
+
